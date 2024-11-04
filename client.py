@@ -3,7 +3,10 @@
 # from email.mime.multipart import MIMEMultipart
 # import sqlite3
 # import datetime
+
+import time
 import re, sys
+import multiprocessing as mp
 import imaplib, email
 import socket
 import subprocess
@@ -210,7 +213,7 @@ if __name__ == "__main__":
             print(host_name)
             try:
                 client_socket.connect((f"{network}.{host}", 5000))
-                client_socket.send("Hello from client!".encode())
+                client_socket.send(f"Hello from client: {socket.gethostname()}".encode())
                 data = client_socket.recv(1024)
                 print(f"Received: {data.decode()}")
                 break
@@ -220,6 +223,12 @@ if __name__ == "__main__":
                 pass
         except AttributeError:
             pass
+    
+    while True:
+        client_socket.send(socket.gethostname().encode())
+        data = client_socket.recv(1024)
+        print(f"Received: {data.decode()}")
+        time.sleep(1)
 
     # client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # while True:
