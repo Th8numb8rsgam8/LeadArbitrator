@@ -6,22 +6,25 @@
 
 import time
 import re, sys
-import multiprocessing as mp
 import imaplib, email
 import socket
 import subprocess
 import pdb
 
-# Setup database to track leads
-def setup_database():
-    conn = sqlite3.connect('leads.db')
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS employees (id INTEGER PRIMARY KEY, email TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS lead_assignments (id INTEGER PRIMARY KEY, employee_id INTEGER)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS properties (id INTEGER PRIMARY KEY, name TEXT, studio_price REAL, one_bedroom_price REAL, two_bedroom_price REAL)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS conversion_tracking (id INTEGER PRIMARY KEY, lead_email TEXT, converted BOOLEAN)''')
-    conn.commit()
-    return conn
+# user = "igrkeene@gmail.com"
+# password = "gkwensfxosnwggrc"
+# imap_url = "imap.gmail.com"
+
+# con = imaplib.IMAP4_SSL(imap_url)
+# con.login(user, password)
+# con.select("Inbox")
+# result, data = con.search(None, "FROM", "amber@kirklandsommers.com")
+# typ, data = con.fetch(b'24180', '(RFC822)')
+# msg = email.message_from_bytes(data[0][1])
+# msg.get_payload()
+# pdb.set_trace()
+
+# print("LOGGED IN")
 
 # Function to send email
 def send_email(to_email, subject, body):
@@ -50,34 +53,6 @@ def log_error(error):
     with open("error_log.txt", "a") as f:
         f.write(f"{datetime.datetime.now()}: {str(error)}\n")
 
-# Function to assign lead to employee in rotation
-def assign_lead(conn):
-    cursor = conn.cursor()
-    
-    # Get list of employees
-    cursor.execute("SELECT * FROM employees")
-    employees = cursor.fetchall()
-
-    # Determine next employee in rotation
-    cursor.execute("SELECT employee_id FROM lead_assignments ORDER BY id DESC LIMIT 1")
-    last_assignment = cursor.fetchone()
-
-    # Rotate through employees
-    if last_assignment:
-        last_employee_id = last_assignment[0]
-        next_employee_id = (last_employee_id % len(employees)) + 1
-    else:
-        next_employee_id = 1
-
-    # Insert new assignment into database
-    cursor.execute("INSERT INTO lead_assignments (employee_id) VALUES (?)", (next_employee_id,))
-    conn.commit()
-
-    # Fetch email of assigned employee
-    cursor.execute("SELECT email FROM employees WHERE id=?", (next_employee_id,))
-    assigned_employee_email = cursor.fetchone()[0]
-
-    return assigned_employee_email
 
 # Function to fetch property pricing
 def get_property_pricing(conn, property_name):
@@ -149,12 +124,6 @@ def track_conversion(lead_email):
 # Call process_lead with the lead's email, property name, and apartment type based on the incoming lead
 # process_lead("example_lead@example.com", "Home Telephone Lofts", "One Bedroom")
 
-
-# To populate employee and property data
-# INSERT INTO employees (email) VALUES ('rebecca.crites@thewindsorcompanies.com');
-# INSERT INTO employees (email) VALUES ('gabrielle.batsche@thewindsorcompanies.com');
-# INSERT INTO employees (email) VALUES ('tim.peffley@thewindsorcompanies.com');
-# 
 # INSERT INTO properties (name, studio_price, one_bedroom_price, two_bedroom_price) VALUES 
 # ('Home Telephone Lofts', 1050, 1245, 1650),
 # ('Grafton House', NULL, NULL, 1600),
@@ -179,25 +148,8 @@ def check_wifi_connection():
         sys.exit(1)
 
 
-if __name__ == "__main__":
-    # user = "igrkeene@gmail.com"
-    # password = "gkwensfxosnwggrc"
-    # imap_url = "imap.gmail.com"
+def get_network():
 
-    # con = imaplib.IMAP4_SSL(imap_url)
-    # con.login(user, password)
-    # con.select("Inbox")
-    # result, data = con.search(None, "FROM", "amber@kirklandsommers.com")
-    # typ, data = con.fetch(b'24180', '(RFC822)')
-    # msg = email.message_from_bytes(data[0][1])
-    # msg.get_payload()
-    # pdb.set_trace()
-
-    # print("LOGGED IN")
-
-    check_wifi_connection()
-
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     gateway_search = subprocess.run(
         ["powershell", "-Command", 
         "Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object NextHop"],
@@ -206,49 +158,53 @@ if __name__ == "__main__":
         shell=True)
     gateway_ip = re.search("\d+\.\d+\.\d+\.\d+", gateway_search.stdout).group()
     network = ".".join(gateway_ip.split(".")[:-1])
-    for host in range(254):
-        host_info = subprocess.run(["powershell", "nslookup", f"{network}.{host}"], capture_output=True, text=True)
-        try:
-            host_name = re.search("(?<=Name:)(.*)", host_info.stdout).group().strip()
-            print(host_name)
-            try:
-                client_socket.connect((f"{network}.{host}", 5000))
-                client_socket.send(f"Hello from client: {socket.gethostname()}".encode())
-                data = client_socket.recv(1024)
-                print(f"Received: {data.decode()}")
-                break
-            except ConnectionRefusedError:
-                pass
-            except TimeoutError:
-                pass
-        except AttributeError:
-            pass
+
+    return network
     
-    while True:
-        client_socket.send(socket.gethostname().encode())
-        data = client_socket.recv(1024)
-        print(f"Received: {data.decode()}")
-        time.sleep(1)
 
-    # client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # while True:
-    #     server_ip = "192.168.1.159"
-    #     port = 5000
+def connect_to_server(network, host, client_socket):
+    host_info = subprocess.run(["powershell", "nslookup", f"{network}.{host}"], capture_output=True, text=True)
+    try:
+        host_name = re.search("(?<=Name:)(.*)", host_info.stdout).group().strip()
+        print(host_name)
+        try:
+            client_socket.connect((f"{network}.{host}", 5000))
+            client_socket.send(f"Hello from client: {socket.gethostname()}".encode())
+            data = client_socket.recv(1024)
+            print(f"Received: {data.decode()}")
+            return True
+        except ConnectionRefusedError:
+            pass
+        except TimeoutError:
+            pass
+    except AttributeError:
+        pass
+    
+    return False
 
-    #     client_socket.connect((server_ip, port))
-    #     client_socket.send("Hello from the client!".encode())
 
-    #     data = client_socket.recv(1024)
+def manage_client(client_socket):
+    try:
+        while True:
+            client_socket.send(socket.gethostname().encode())
+            data = client_socket.recv(1024)
+            print(f"Received: {data.decode()}")
+            time.sleep(1)
+    except OSError as e:
+        pdb.set_trace()
+        print(str(e))
+        sys.exit(1)
 
-    #     print(f"Received: {data.decode()}")
 
-    # client_socket.close()
+if __name__ == "__main__":
 
-################################################################################
+    check_wifi_connection()
 
-    # s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # s.bind(('', 12345))
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    network = get_network()
 
-    # while True:
-    #     data = s.recv(1024)
-    #     print(f"Received broadcast message: {data.decode()}")
+    for host in range(254):
+       if connect_to_server(network, host, client_socket):
+            break
+    
+    manage_client(client_socket)
