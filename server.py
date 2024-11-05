@@ -20,12 +20,20 @@ def check_wifi_connection():
 
 
 def handle_client(client_socket):
+
+    conn = sqlite3.connect('leads.db')
+    cursor = conn.cursor()
+    client_name = None
     while True:
         data = client_socket.recv(1024)
-        if not data:
-            continue
-        print(f"Received: {data.decode()}")
-        client_socket.send("Message Received!".encode())
+        if "Hello from client" in data.decode():
+            client_name = re.search("(?<=Hello from client:)(.*)", data.decode()).group().strip()
+            print(f"Client name: {client_name}.")
+            client_socket.send(f"Client name received by server.".encode())
+        elif "Token Request" in data.decode():
+            cursor.execute(f"SELECT token FROM employees WHERE name = '{client_name}'")
+            token = cursor.fetchone()[0]
+            client_socket.send(f"Token: {token}".encode())
 
 
 # Function to assign lead to employee in rotation
@@ -62,15 +70,16 @@ def assign_lead(conn):
 def setup_database():
     conn = sqlite3.connect('leads.db')
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT PRIMARY KEY, email TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT PRIMARY KEY, email TEXT, token INTEGER)''')
     data = [
-        ('Rebecca', 'rebecca.crites@thewindsorcompanies.com'),
-        ('Gabriele', 'gabrielle.batsche@thewindsorcompanies.com'),
-        ('Tim', 'tim.peffley@thewindsorcompanies.com')
+        ('Rebecca', 'rebecca.crites@thewindsorcompanies.com', '1'),
+        ('Gabriele', 'gabrielle.batsche@thewindsorcompanies.com', '0'),
+        ('Tim', 'tim.peffley@thewindsorcompanies.com', '0'),
+        ('DESKTOP-F8DKQV0', 'igrkeene@gmail.com', '0')
     ]
 
     try:
-        cursor.executemany('''INSERT INTO employees (name, email) VALUES (?, ?)''', data)
+        cursor.executemany('''INSERT INTO employees (name, email, token) VALUES (?, ?, ?)''', data)
     except sqlite3.IntegrityError:
         pass
 
@@ -81,7 +90,7 @@ def setup_database():
     # cursor.execute('''CREATE TABLE IF NOT EXISTS properties (id INTEGER PRIMARY KEY, name TEXT, studio_price REAL, one_bedroom_price REAL, two_bedroom_price REAL)''')
     # cursor.execute('''CREATE TABLE IF NOT EXISTS conversion_tracking (id INTEGER PRIMARY KEY, lead_email TEXT, converted BOOLEAN)''')
     conn.commit()
-    return conn
+    conn.close()
 
 
 def manage_server():
@@ -109,6 +118,6 @@ def manage_server():
 
 if __name__ == "__main__":
 
-    conn = setup_database()
     check_wifi_connection()
+    setup_database()
     manage_server()

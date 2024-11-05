@@ -163,10 +163,9 @@ def get_network():
     
 
 def connect_to_server(network, host, client_socket):
-    host_info = subprocess.run(["powershell", "nslookup", f"{network}.{host}"], capture_output=True, text=True)
+    potential_server = subprocess.run(["powershell", "nslookup", f"{network}.{host}"], capture_output=True, text=True)
     try:
-        host_name = re.search("(?<=Name:)(.*)", host_info.stdout).group().strip()
-        print(host_name)
+        server_name = re.search("(?<=Name:)(.*)", potential_server.stdout).group().strip()
         try:
             client_socket.connect((f"{network}.{host}", 5000))
             client_socket.send(f"Hello from client: {socket.gethostname()}".encode())
@@ -184,14 +183,17 @@ def connect_to_server(network, host, client_socket):
 
 
 def manage_client(client_socket):
+
+    token = 0
     try:
         while True:
-            client_socket.send(socket.gethostname().encode())
+            client_socket.send("Token Request".encode())
             data = client_socket.recv(1024)
-            print(f"Received: {data.decode()}")
+            if "Token" in data.decode():
+                token = int(re.search("\d", data.decode()).group())
+                print(f"Token Received: {token}")
             time.sleep(1)
     except OSError as e:
-        pdb.set_trace()
         print(str(e))
         sys.exit(1)
 
