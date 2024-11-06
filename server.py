@@ -1,4 +1,5 @@
 import re
+import queue
 import sqlite3
 import threading
 import socket
@@ -19,12 +20,21 @@ def check_wifi_connection():
         sys.exit(1)
 
 
-def handle_client(client_socket):
+def handle_client(client_socket, q):
 
     conn = sqlite3.connect('leads.db')
     cursor = conn.cursor()
     client_name = None
+
     while True:
+
+        try:
+            handled_lead = q.get(block=False)
+            client_socket.send(f"Handled Lead: {handled_lead}.".encode())
+            q.task_done()
+        except queue.Empty:
+            pass
+
         data = client_socket.recv(1024)
         if "Hello from client" in data.decode():
             client_name = re.search("(?<=Hello from client:)(.*)", data.decode()).group().strip()
@@ -34,6 +44,21 @@ def handle_client(client_socket):
             cursor.execute(f"SELECT token FROM employees WHERE name = '{client_name}'")
             token = cursor.fetchone()[0]
             client_socket.send(f"Token: {token}".encode())
+        elif "Token Release" in data.decode():
+            handled_lead = data.decode().split("Token Release for ")[1]
+            clients = ["\'"+thread.name+"\'" for thread in threading.enumerate() if thread.name != "MainThread"]
+            other_clients = len(clients) - 1
+            for client in range(other_clients):
+                q.put(handled_lead)
+            q.join()
+
+            client_query = "(" + ", ".join(clients) + ")"
+            cursor.execute("SELECT name, token FROM employees WHERE name IN " + client_query)
+            info = cursor.fetchall()
+            tokens = [val[1] for val in info]
+            rotated_tokens = tokens[1:] + tokens[1:]
+            for idx, token in enumerate(rotated_tokens):
+                cursor.execute(f"UPDATE employees SET token = {str(token)} WHERE name = '{info[idx][0]}'")
 
 
 # Function to assign lead to employee in rotation
@@ -70,12 +95,12 @@ def assign_lead(conn):
 def setup_database():
     conn = sqlite3.connect('leads.db')
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT PRIMARY KEY, email TEXT, token INTEGER)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT, email TEXT, token INTEGER)''')
     data = [
-        ('Rebecca', 'rebecca.crites@thewindsorcompanies.com', '1'),
-        ('Gabriele', 'gabrielle.batsche@thewindsorcompanies.com', '0'),
-        ('Tim', 'tim.peffley@thewindsorcompanies.com', '0'),
-        ('DESKTOP-F8DKQV0', 'igrkeene@gmail.com', '0')
+        ('Rebecca', 'rebecca.crites@thewindsorcompanies.com', '0'),
+        # ('Gabriele', 'gabrielle.batsche@thewindsorcompanies.com', '0'),
+        # ('Tim', 'tim.peffley@thewindsorcompanies.com', '0'),
+        ('DESKTOP-F8DKQV0', 'igrkeene@gmail.com', '1')
     ]
 
     try:
@@ -103,10 +128,16 @@ def manage_server():
 
     print("Server listening on port 5000.")
 
+    q = queue.Queue(maxsize=10)
     while True:
         client_socket, addr = server_socket.accept()
-        print(f"Connection from {addr}")
-        thread = threading.Thread(target=handle_client, args=(client_socket,))
+        client_info = subprocess.run(["powershell", "nslookup", f"{addr}"], capture_output=True, text=True)
+        client_name = re.search("(?<=Name:)(.*)", client_info.stdout).group().strip()
+        print(f"Connection from {client_name}:{addr}")
+        thread = threading.Thread(
+            name=client_name,
+            target=handle_client, 
+            args=(client_socket, q))
         thread.start()
 
 # broadcast_ip = ".".join(server_ip.split(".")[:-1]) + ".255"

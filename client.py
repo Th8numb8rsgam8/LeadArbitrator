@@ -167,10 +167,11 @@ def connect_to_server(network, host, client_socket):
     try:
         server_name = re.search("(?<=Name:)(.*)", potential_server.stdout).group().strip()
         try:
+            print(f"Attempting to connect to {server_name}...")
             client_socket.connect((f"{network}.{host}", 5000))
             client_socket.send(f"Hello from client: {socket.gethostname()}".encode())
             data = client_socket.recv(1024)
-            print(f"Received: {data.decode()}")
+            print(f"{data.decode()}")
             return True
         except ConnectionRefusedError:
             pass
@@ -192,6 +193,12 @@ def manage_client(client_socket):
             if "Token" in data.decode():
                 token = int(re.search("\d", data.decode()).group())
                 print(f"Token Received: {token}")
+                if token:
+                    print("Sending email")
+                    client_socket.send("Token Release for bigboii@bigG.com".encode())
+            elif "Handled Lead" in data.decode():
+                handled_lead = data.decode().split("Handled Lead ")[1]
+                print(f"Deleting handled lead {handled_lead}")
             time.sleep(1)
     except OSError as e:
         print(str(e))
