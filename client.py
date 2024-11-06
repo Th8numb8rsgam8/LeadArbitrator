@@ -169,7 +169,7 @@ def connect_to_server(network, host, client_socket):
         try:
             print(f"Attempting to connect to {server_name}...")
             client_socket.connect((f"{network}.{host}", 5000))
-            client_socket.send(f"Hello from client: {socket.gethostname()}".encode())
+            client_socket.send(f"Hello from client. Client: {socket.gethostname()}, Broadcast: {network}.255".encode())
             data = client_socket.recv(1024)
             print(f"{data.decode()}")
             return True
@@ -183,26 +183,38 @@ def connect_to_server(network, host, client_socket):
     return False
 
 
-def manage_client(client_socket):
+def manage_client(client_socket, broadcast_socket):
 
-    token = 0
-    try:
-        while True:
-            client_socket.send("Token Request".encode())
+    while True:
+        data, addr = broadcast_socket.recvfrom(1024)
+        info = data.decode()
+        if "Token" in info and socket.gethostname() in info:
+            print("SENDING EMAIL...")
+            client_socket.send("Token Release for bigboii@bigG.com".encode())
             data = client_socket.recv(1024)
-            if "Token" in data.decode():
-                token = int(re.search("\d", data.decode()).group())
-                print(f"Token Received: {token}")
-                if token:
-                    print("Sending email")
-                    client_socket.send("Token Release for bigboii@bigG.com".encode())
-            elif "Handled Lead" in data.decode():
-                handled_lead = data.decode().split("Handled Lead: ")[1]
-                print(f"Deleting handled lead {handled_lead}")
-            time.sleep(1)
-    except OSError as e:
-        print(str(e))
-        sys.exit(1)
+            print(f"{data.decode()}")
+        elif "Handled Lead" in info:
+            handled_lead = data.decode().split("Handled Lead: ")[1]
+            print(f"Deleting handled lead {handled_lead}")
+
+    # token = 0
+    # try:
+    #     while True:
+    #         client_socket.send("Token Request".encode())
+    #         data = client_socket.recv(1024)
+    #         if "Token" in data.decode():
+    #             token = int(re.search("\d", data.decode()).group())
+    #             print(f"Token Received: {token}")
+    #             if token:
+    #                 print("Sending email")
+    #                 client_socket.send("Token Release for bigboii@bigG.com".encode())
+    #         elif "Handled Lead" in data.decode():
+    #             handled_lead = data.decode().split("Handled Lead: ")[1]
+    #             print(f"Deleting handled lead {handled_lead}")
+    #         time.sleep(1)
+    # except OSError as e:
+    #     print(str(e))
+    #     sys.exit(1)
 
 
 if __name__ == "__main__":
@@ -212,8 +224,12 @@ if __name__ == "__main__":
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     network = get_network()
 
+    broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    broadcast_socket.bind(('', 12345))
+
     for host in range(254):
        if connect_to_server(network, host, client_socket):
             break
     
-    manage_client(client_socket)
+    manage_client(client_socket, broadcast_socket)

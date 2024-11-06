@@ -3,6 +3,7 @@ import queue
 import sqlite3
 import threading
 import socket
+import time
 import subprocess
 import pdb
 
@@ -20,37 +21,46 @@ def check_wifi_connection():
         sys.exit(1)
 
 
-def handle_client(client_socket, q):
+def handle_client(client_socket, broadcast_socket):
 
     conn = sqlite3.connect('leads.db')
     cursor = conn.cursor()
     client_name = None
+    broadcast_addr = None
 
     while True:
 
-        try:
-            handled_lead = q.get(block=False)
-            client_socket.send(f"Handled Lead: {handled_lead}.".encode())
-            q.task_done()
-        except queue.Empty:
-            pass
+        cursor.execute(f"SELECT name, token FROM employees WHERE name = '{threading.current_thread().name}'")
+        name, token = cursor.fetchone()
+        if token and broadcast_addr is not None:
+            broadcast_socket.sendto(f"Token: {name}".encode(), (broadcast_addr, 12345))
+
+        # try:
+        #     handled_lead = q.get(block=False)
+        #     client_socket.send(f"Handled Lead: {handled_lead}.".encode())
+        #     q.task_done()
+        # except queue.Empty:
+        #     pass
 
         data = client_socket.recv(1024)
         if "Hello from client" in data.decode():
-            client_name = re.search("(?<=Hello from client:)(.*)", data.decode()).group().strip()
+            client_name, broadcast_addr = re.search("Client:\s*(.*),\s*Broadcast:\s*(.*)", data.decode()).groups()
             print(f"Client name: {client_name}.")
             client_socket.send(f"Client name received by server.".encode())
-        elif "Token Request" in data.decode():
-            cursor.execute(f"SELECT token FROM employees WHERE name = '{client_name}'")
-            token = cursor.fetchone()[0]
-            client_socket.send(f"Token: {token}".encode())
+        # elif "Token Request" in data.decode():
+        #     cursor.execute(f"SELECT token FROM employees WHERE name = '{client_name}'")
+        #     token = cursor.fetchone()[0]
+        #     client_socket.send(f"Token: {token}".encode())
         elif "Token Release" in data.decode():
             handled_lead = data.decode().split("Token Release for ")[1]
+            broadcast_socket.sendto(f"Handled Lead: {handled_lead}".encode(), (broadcast_addr, 12345))
+
             clients = ["\'"+thread.name+"\'" for thread in threading.enumerate() if thread.name != "MainThread"]
-            other_clients = len(clients) - 1
-            for client in range(other_clients):
-                q.put(handled_lead)
-            q.join()
+
+            # other_clients = len(clients) - 1
+            # for client in range(other_clients):
+            #     q.put(handled_lead)
+            # q.join()
 
             client_query = "(" + ", ".join(clients) + ")"
             cursor.execute("SELECT name, token FROM employees WHERE name IN " + client_query)
@@ -61,6 +71,9 @@ def handle_client(client_socket, q):
             for idx, token in enumerate(rotated_tokens):
                 cursor.execute(f"UPDATE employees SET token = {str(token)} WHERE name = '{info[idx][0]}'")
             conn.commit()
+            client_socket.send("Database updated".encode())
+
+        time.sleep(5)
 
 
 # Function to assign lead to employee in rotation
@@ -122,6 +135,9 @@ def setup_database():
 
 def manage_server():
 
+    broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     result = subprocess.run(["nslookup", socket.gethostname()], capture_output=True, text=True)
     server_ip = re.search("(?<=Address:)\s*(\d+\.\d+\.\d+\.\d+)", result.stdout).group().strip()
@@ -130,7 +146,7 @@ def manage_server():
 
     print("Server listening on port 5000.")
 
-    q = queue.Queue(maxsize=10)
+    # q = queue.Queue(maxsize=10)
     while True:
         client_socket, addr = server_socket.accept()
         client_info = subprocess.run(["powershell", "nslookup", f"{addr}"], capture_output=True, text=True)
@@ -139,7 +155,7 @@ def manage_server():
         thread = threading.Thread(
             name=client_name,
             target=handle_client, 
-            args=(client_socket, q))
+            args=(client_socket, broadcast_socket))
         thread.start()
 
 # broadcast_ip = ".".join(server_ip.split(".")[:-1]) + ".255"
