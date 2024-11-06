@@ -197,7 +197,7 @@ def manage_client(client_socket):
                     print("Sending email")
                     client_socket.send("Token Release for bigboii@bigG.com".encode())
             elif "Handled Lead" in data.decode():
-                handled_lead = data.decode().split("Handled Lead ")[1]
+                handled_lead = data.decode().split("Handled Lead: ")[1]
                 print(f"Deleting handled lead {handled_lead}")
             time.sleep(1)
     except OSError as e:
