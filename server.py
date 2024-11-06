@@ -55,10 +55,12 @@ def handle_client(client_socket, q):
             client_query = "(" + ", ".join(clients) + ")"
             cursor.execute("SELECT name, token FROM employees WHERE name IN " + client_query)
             info = cursor.fetchall()
+            print(f"{threading.current_thread().name} releasing token {info}")
             tokens = [val[1] for val in info]
-            rotated_tokens = tokens[1:] + tokens[1:]
+            rotated_tokens = tokens[1:] + tokens[:1]
             for idx, token in enumerate(rotated_tokens):
                 cursor.execute(f"UPDATE employees SET token = {str(token)} WHERE name = '{info[idx][0]}'")
+            conn.commit()
 
 
 # Function to assign lead to employee in rotation
@@ -132,7 +134,7 @@ def manage_server():
     while True:
         client_socket, addr = server_socket.accept()
         client_info = subprocess.run(["powershell", "nslookup", f"{addr}"], capture_output=True, text=True)
-        client_name = re.search("(?<=Name:)(.*)", client_info.stdout).group().strip()
+        client_name = re.search("(?<=Name:)\s*(.*)\.", client_info.stdout).groups()[0]
         print(f"Connection from {client_name}:{addr}")
         thread = threading.Thread(
             name=client_name,
