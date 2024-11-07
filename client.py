@@ -182,8 +182,6 @@ def manage_client(client_socket, broadcast_socket):
         if "Token" in info and socket.gethostname() in info and len(email_list) > 0:
             print(f"SENDING EMAIL {email_list[0]}...")
             client_socket.send(f"Token Release for {email_list[0]}".encode())
-            data = client_socket.recv(1024)
-            print(f"{data.decode()}")
         elif "Handled Lead" in info:
             handled_lead = data.decode().split("Handled Lead: ")[1]
             print(f"Deleting handled lead {handled_lead}...")

@@ -76,7 +76,6 @@ def handle_client(client_socket, broadcast_socket):
             for idx, token in enumerate(rotated_tokens):
                 cursor.execute(f"UPDATE employees SET token = {str(token)} WHERE name = '{info[idx][0]}'")
             conn.commit()
-            client_socket.send("Database updated".encode())
 
             cursor.execute("SELECT name FROM employees WHERE token = 1")
             name = cursor.fetchone()[0]
@@ -144,7 +143,7 @@ def manage_server(num_clients):
 
     for t in client_threads:
         t.start()
-        time.sleep(1)
+        time.sleep(5)
 
 
 if __name__ == "__main__":
