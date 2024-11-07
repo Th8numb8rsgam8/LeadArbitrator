@@ -120,20 +120,6 @@ def track_conversion(lead_email):
     conn.commit()
     conn.close()
 
-# Example usage
-# Call process_lead with the lead's email, property name, and apartment type based on the incoming lead
-# process_lead("example_lead@example.com", "Home Telephone Lofts", "One Bedroom")
-
-# INSERT INTO properties (name, studio_price, one_bedroom_price, two_bedroom_price) VALUES 
-# ('Home Telephone Lofts', 1050, 1245, 1650),
-# ('Grafton House', NULL, NULL, 1600),
-# ('320 Grafton Ave', NULL, 725, NULL),
-# ('Arbors North', NULL, 1020, 1020),
-# ('Garland Court', NULL, 850, 975),
-# ('Graphic Arts Lofts', 1020, 1200, 1400),
-# ('The Fireblocks District', 950, 1075, 1550),
-# ('The Deneau', 1220, 1500, 1600),
-# ('310-316 Superior Ave', NULL, 725, NULL);
 
 def check_wifi_connection():
     wifi_connection = subprocess.run(
@@ -185,36 +171,25 @@ def connect_to_server(network, host, client_socket):
 
 def manage_client(client_socket, broadcast_socket):
 
+    email_list = ["email1", "email2", "email3", "email4", "email5", "email6"]
+
+    i = 7 
     while True:
+        email_list.append(f"email{i}")
+        i += 1
         data, addr = broadcast_socket.recvfrom(1024)
         info = data.decode()
-        if "Token" in info and socket.gethostname() in info:
-            print("SENDING EMAIL...")
-            client_socket.send("Token Release for bigboii@bigG.com".encode())
+        if "Token" in info and socket.gethostname() in info and len(email_list) > 0:
+            print(f"SENDING EMAIL {email_list[0]}...")
+            client_socket.send(f"Token Release for {email_list[0]}".encode())
             data = client_socket.recv(1024)
             print(f"{data.decode()}")
         elif "Handled Lead" in info:
             handled_lead = data.decode().split("Handled Lead: ")[1]
-            print(f"Deleting handled lead {handled_lead}")
-
-    # token = 0
-    # try:
-    #     while True:
-    #         client_socket.send("Token Request".encode())
-    #         data = client_socket.recv(1024)
-    #         if "Token" in data.decode():
-    #             token = int(re.search("\d", data.decode()).group())
-    #             print(f"Token Received: {token}")
-    #             if token:
-    #                 print("Sending email")
-    #                 client_socket.send("Token Release for bigboii@bigG.com".encode())
-    #         elif "Handled Lead" in data.decode():
-    #             handled_lead = data.decode().split("Handled Lead: ")[1]
-    #             print(f"Deleting handled lead {handled_lead}")
-    #         time.sleep(1)
-    # except OSError as e:
-    #     print(str(e))
-    #     sys.exit(1)
+            print(f"Deleting handled lead {handled_lead}...")
+            email_list.remove(handled_lead)
+        
+        time.sleep(5)
 
 
 if __name__ == "__main__":
