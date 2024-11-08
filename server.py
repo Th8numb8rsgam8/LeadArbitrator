@@ -42,9 +42,23 @@ def check_wifi_connection():
         sys.exit(1)
 
 
-def handle_client(client_socket, broadcast_socket):
+def repeat_broadcast(broadcast_socket, broadcast_addr, q):
 
-    conn = sqlite3.connect('leads.db')
+    broadcast_msg = None
+    while True:
+        try:
+            broadcast_msg = q.get(block=False, timeout=1)
+        except queue.Empty:
+            pass
+        
+        time.sleep(2)
+        if broadcast_msg is not None:
+            broadcast_socket.sendto(broadcast_msg.encode(), (broadcast_addr, 12345))
+
+
+def handle_client(client_socket, q):
+
+    conn = sqlite3.connect('employees.db')
     cursor = conn.cursor()
     client_name = None
     broadcast_addr = None
@@ -60,13 +74,15 @@ def handle_client(client_socket, broadcast_socket):
             cursor.execute(f"SELECT name, token FROM employees WHERE name = '{threading.current_thread().name}'")
             name, token = cursor.fetchone()
             if token:
-                broadcast_socket.sendto(f"Token: {name}".encode(), (broadcast_addr, 12345))
+                msg = f"Token: {name}"
+                q.put(msg)
 
         elif "Token Release" in data.decode():
             handled_lead = data.decode().split("Token Release for ")[1]
-            broadcast_socket.sendto(f"Handled Lead: {handled_lead}".encode(), (broadcast_addr, 12345))
+            msg = f"Handled Lead: {handled_lead}"
+            q.put(msg)
 
-            clients = ["\'"+thread.name+"\'" for thread in threading.enumerate() if thread.name != "MainThread"]
+            clients = ["\'"+thread.name+"\'" for thread in threading.enumerate() if thread.name not in ["MainThread", "Broadcast"]]
             client_query = "(" + ", ".join(clients) + ")"
             cursor.execute("SELECT name, token FROM employees WHERE name IN " + client_query)
             info = cursor.fetchall()
@@ -77,22 +93,26 @@ def handle_client(client_socket, broadcast_socket):
                 cursor.execute(f"UPDATE employees SET token = {str(token)} WHERE name = '{info[idx][0]}'")
             conn.commit()
 
+            time.sleep(2)
+
             cursor.execute("SELECT name FROM employees WHERE token = 1")
             name = cursor.fetchone()[0]
-            broadcast_socket.sendto(f"Token: {name}".encode(), (broadcast_addr, 12345))
+            msg = f"Token: {name}"
+            q.put(msg)
 
         elif "No Leads" in data.decode():
 
-            broadcast_socket.sendto(f"Token: {threading.current_thread().name}".encode(), (broadcast_addr, 12345))
+            msg = f"Token: {threading.current_thread().name}"
+            q.put(msg)
 
-        time.sleep(20)
+        time.sleep(5)
 
 
 # Setup database to track leads
 def setup_database():
 
-    if not Path("leads.db").exists():
-        conn = sqlite3.connect('leads.db')
+    if not Path("employees.db").exists():
+        conn = sqlite3.connect('employees.db')
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT, email TEXT, token INTEGER)''')
         data = [
@@ -108,12 +128,6 @@ def setup_database():
         except sqlite3.IntegrityError:
             pass
 
-        # cursor.executemany('''INSERT INTO employees (name, email) VALUES ('Rebecca', 'rebecca.crites@thewindsorcompanies.com')''')
-        # INSERT INTO employees (email) VALUES ('gabrielle.batsche@thewindsorcompanies.com');
-        # INSERT INTO employees (email) VALUES ('tim.peffley@thewindsorcompanies.com');
-        # cursor.execute('''CREATE TABLE IF NOT EXISTS lead_assignments (id INTEGER PRIMARY KEY, employee_id INTEGER)''')
-        # cursor.execute('''CREATE TABLE IF NOT EXISTS properties (id INTEGER PRIMARY KEY, name TEXT, studio_price REAL, one_bedroom_price REAL, two_bedroom_price REAL)''')
-        # cursor.execute('''CREATE TABLE IF NOT EXISTS conversion_tracking (id INTEGER PRIMARY KEY, lead_email TEXT, converted BOOLEAN)''')
         conn.commit()
         conn.close()
 
@@ -131,6 +145,7 @@ def manage_server(num_clients):
 
     print("Server listening on port 5000.")
 
+    q = queue.Queue(maxsize=1)
     client_threads = []
     while True:
         client_socket, addr = server_socket.accept()
@@ -140,10 +155,17 @@ def manage_server(num_clients):
         thread = threading.Thread(
             name=client_name,
             target=handle_client, 
-            args=(client_socket, broadcast_socket))
+            args=(client_socket, q))
         client_threads.append(thread)
         if len(client_threads) == num_clients:
             break
+
+    broadcast_addr = ".".join(server_ip.split(".")[:3]) + ".255"
+    broadcast_thread = threading.Thread(
+        name="Broadcast",
+        target=repeat_broadcast,
+        args=(broadcast_socket, broadcast_addr, q))
+    broadcast_thread.start()
 
     for t in client_threads:
         t.start()

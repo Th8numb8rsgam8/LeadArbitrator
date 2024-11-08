@@ -177,31 +177,37 @@ def manage_client(client_socket, broadcast_socket):
     email_list = ["email1", "email2", "email3", "email4", "email5", "email6"]
 
     i = 7 
+    previous_broadcast = None
+    inbox_empty = False
     while True:
         r = random.uniform(0, 1)
         if r <= 0.1:
             email_list.append(f"email{i}")
             i += 1
 
-        print(email_list)
         data, addr = broadcast_socket.recvfrom(8192)
         info = data.decode()
-        if "Token" in info and socket.gethostname() in info:
-            if len(email_list) > 0:
-                print(f"SENDING EMAIL {email_list[0]}...")
-                client_socket.send(f"Token Release for {email_list[0]}".encode())
-            else:
-                print("No leads found in inbox.")
-                client_socket.send("No Leads.".encode())
-        elif "Handled Lead" in info:
-            handled_lead = data.decode().split("Handled Lead: ")[1]
-            if handled_lead in email_list:
-                print(f"Deleting handled lead {handled_lead}...")
-                email_list.remove(handled_lead)
-            else:
-                print(f"{handled_lead} not in client's inbox")
+        if info != previous_broadcast or inbox_empty:
+            if "Token" in info and socket.gethostname() in info:
+                if len(email_list) > 0:
+                    print(f"SENDING EMAIL {email_list[0]}...")
+                    client_socket.send(f"Token Release for {email_list[0]}".encode())
+                    inbox_empty = False
+                else:
+                    print("No leads found in inbox.")
+                    client_socket.send("No Leads.".encode())
+                    inbox_empty = True
+            elif "Handled Lead" in info:
+                handled_lead = data.decode().split("Handled Lead: ")[1]
+                if handled_lead in email_list:
+                    print(f"Deleting handled lead {handled_lead}...")
+                    email_list.remove(handled_lead)
+                else:
+                    print(f"{handled_lead} not in client's inbox")
+
+            previous_broadcast = info
         
-        time.sleep(20)
+        time.sleep(2)
 
 
 if __name__ == "__main__":
