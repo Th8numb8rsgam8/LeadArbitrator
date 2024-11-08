@@ -10,6 +10,9 @@ import imaplib, email
 import socket
 import subprocess
 import pdb
+import random
+
+# To set up app password, go to https://myaccount.google.com/apppasswords
 
 # user = "igrkeene@gmail.com"
 # password = "gkwensfxosnwggrc"
@@ -175,19 +178,30 @@ def manage_client(client_socket, broadcast_socket):
 
     i = 7 
     while True:
-        email_list.append(f"email{i}")
-        i += 1
-        data, addr = broadcast_socket.recvfrom(1024)
+        r = random.uniform(0, 1)
+        if r <= 0.1:
+            email_list.append(f"email{i}")
+            i += 1
+
+        print(email_list)
+        data, addr = broadcast_socket.recvfrom(8192)
         info = data.decode()
-        if "Token" in info and socket.gethostname() in info and len(email_list) > 0:
-            print(f"SENDING EMAIL {email_list[0]}...")
-            client_socket.send(f"Token Release for {email_list[0]}".encode())
+        if "Token" in info and socket.gethostname() in info:
+            if len(email_list) > 0:
+                print(f"SENDING EMAIL {email_list[0]}...")
+                client_socket.send(f"Token Release for {email_list[0]}".encode())
+            else:
+                print("No leads found in inbox.")
+                client_socket.send("No Leads.".encode())
         elif "Handled Lead" in info:
             handled_lead = data.decode().split("Handled Lead: ")[1]
-            print(f"Deleting handled lead {handled_lead}...")
-            email_list.remove(handled_lead)
+            if handled_lead in email_list:
+                print(f"Deleting handled lead {handled_lead}...")
+                email_list.remove(handled_lead)
+            else:
+                print(f"{handled_lead} not in client's inbox")
         
-        time.sleep(5)
+        time.sleep(20)
 
 
 if __name__ == "__main__":

@@ -81,7 +81,11 @@ def handle_client(client_socket, broadcast_socket):
             name = cursor.fetchone()[0]
             broadcast_socket.sendto(f"Token: {name}".encode(), (broadcast_addr, 12345))
 
-        time.sleep(5)
+        elif "No Leads" in data.decode():
+
+            broadcast_socket.sendto(f"Token: {threading.current_thread().name}".encode(), (broadcast_addr, 12345))
+
+        time.sleep(20)
 
 
 # Setup database to track leads
