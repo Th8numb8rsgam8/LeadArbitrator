@@ -48,7 +48,10 @@ class EmailHandler:
         msg['From'] = self._user
 
         if notify:
-            body = f"Handled lead for {to_email}"
+            body = f'''
+                {self._user} Initiated lead for {lead_info["name"]}, who is interested in {lead_info["location"]}.
+                Contact Info: email: {to_email}, phone: {lead_info["phone"]}.
+                '''
             msg['To'] = self._user
             msg['Subject'] = "Lead Handled"
             msg.attach(MIMEText(body, 'plain'))
@@ -91,7 +94,8 @@ class EmailHandler:
                 _, msg = self._imap.fetch(message, '(RFC822)')
                 msg_data = email.message_from_bytes(msg[0][1])
                 payload = msg_data.get_payload()[0].get_payload()
-                pdb.set_trace()
+                while type(payload) != str:
+                    payload = payload[0].get_payload()
                 try:
                     lead_name, lead_phone, lead_email = lead_info = re.findall(self._lead_info_pattern, payload)[0]
                     location = re.search("Apartments.com Network lead for (.*)", msg_data["Subject"]).groups()[0]
@@ -219,7 +223,7 @@ class ClientHandler:
                     try:
                         tgt_info = leads.pop(handled_lead)
                         print(f"Deleting handled lead from {handled_lead}...")
-                        self._email_handler.delete_email(handled_lead, tgt_info["msg_id"])
+                        self._email_handler.delete_email(tgt_info["msg_id"])
                         self._email_handler.send_email(handled_lead, tgt_info, notify=True)
                     except KeyError:
                         print(f"{handled_lead} not in client's inbox")
@@ -233,10 +237,8 @@ if __name__ == "__main__":
 
     user = "igrkeene@gmail.com"
     password = "gkwensfxosnwggrc"
-    # source = "b1gbo1j@yahoo.com"
-    source = "rebecca.crites@thewindsorcompanies.com"
+    source = "ivan.keene@radiancetech.com"
 
     email_handler = EmailHandler(user, password, source)
-    leads = email_handler.retrieve_leads()
     client_handler = ClientHandler(email_handler)
     client_handler.manage_client()
