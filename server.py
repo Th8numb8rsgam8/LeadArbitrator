@@ -117,8 +117,8 @@ def setup_database():
         cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT, token INTEGER)''')
         data = [
             ('Rebecca', '0'),
-            # ('Gabriele', 'gabrielle.batsche@thewindsorcompanies.com', '0'),
-            # ('Tim', 'tim.peffley@thewindsorcompanies.com', '0'),
+            # ('Gabriele', '0'),
+            # ('Tim', '0'),
             ('DESKTOP-18R4AM7', '0'),
             ('DESKTOP-F8DKQV0', '1')
         ]
