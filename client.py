@@ -24,6 +24,7 @@ class EmailHandler:
         self._imap = imaplib.IMAP4_SSL(self._imap_url)
         self._imap.login(user, password)
         self._get_responses()
+        self._lead_info_pattern = "Renter's Information\\r\\nName:\s*(.*)\\r\\nPhone:\s*(.*)\\r\\nEmail:\s*(.*)\\r\\nLead Submitted"
 
 
     def _get_responses(self):
@@ -31,7 +32,14 @@ class EmailHandler:
         signature_file = Path("signature.txt")
         signature = signature_file.read_text()
         responses_dir = Path("responses")
-        self._response_dict = {f.name.split(".")[0]: f.read_text() + signature for f in responses_dir.iterdir()}
+        self._response_dict = {self._format_location_name(f.name): f.read_text() + signature for f in responses_dir.iterdir()}
+
+
+    def _format_location_name(self, file_name):
+
+        name = file_name.split(".")[0]
+        capitalized = list(map(lambda x: x.capitalize(), name.split("_")))
+        return " ".join(capitalized)
 
 
     def send_email(self, to_email, lead_info, notify=False):
@@ -45,9 +53,9 @@ class EmailHandler:
             msg['Subject'] = "Lead Handled"
             msg.attach(MIMEText(body, 'plain'))
         else:
-            body = self._response_dict[lead_info["Location Name"]]
+            body = self._response_dict[lead_info["location"]]
             msg['To'] = to_email
-            msg['Subject'] = "Location Name"
+            msg['Subject'] = lead_info["location"]
             msg.attach(MIMEText(body, 'html'))
 
         try:
@@ -82,9 +90,18 @@ class EmailHandler:
             for message in message_list:
                 _, msg = self._imap.fetch(message, '(RFC822)')
                 msg_data = email.message_from_bytes(msg[0][1])
-                payload = msg_data.get_payload()[1].get_payload()
-                print("Parse Payload for relevant info.")
-                leads_info[msg_data["Subject"]] = payload
+                payload = msg_data.get_payload()[0].get_payload()
+                pdb.set_trace()
+                try:
+                    lead_name, lead_phone, lead_email = lead_info = re.findall(self._lead_info_pattern, payload)[0]
+                    location = re.search("Apartments.com Network lead for (.*)", msg_data["Subject"]).groups()[0]
+                    leads_info[lead_email] = {
+                        "name": lead_name, 
+                        "phone": lead_phone,
+                        "msg_id": message,
+                        "location": location}
+                except IndexError as e:
+                    self._log_error(e)
         
             return leads_info
 
@@ -202,7 +219,7 @@ class ClientHandler:
                     try:
                         tgt_info = leads.pop(handled_lead)
                         print(f"Deleting handled lead from {handled_lead}...")
-                        self._email_handler.delete_email(handled_lead, tgt_info["Email Id"])
+                        self._email_handler.delete_email(handled_lead, tgt_info["msg_id"])
                         self._email_handler.send_email(handled_lead, tgt_info, notify=True)
                     except KeyError:
                         print(f"{handled_lead} not in client's inbox")
@@ -216,8 +233,10 @@ if __name__ == "__main__":
 
     user = "igrkeene@gmail.com"
     password = "gkwensfxosnwggrc"
-    source = "b1gbo1j@yahoo.com"
+    # source = "b1gbo1j@yahoo.com"
+    source = "rebecca.crites@thewindsorcompanies.com"
 
     email_handler = EmailHandler(user, password, source)
+    leads = email_handler.retrieve_leads()
     client_handler = ClientHandler(email_handler)
     client_handler.manage_client()
