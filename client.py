@@ -1,70 +1,103 @@
-# import smtplib
-# from email.mime.text import MIMEText
-# from email.mime.multipart import MIMEMultipart
-# import sqlite3
-# import datetime
-
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import imaplib, email, smtplib
+from pathlib import Path
+import datetime
 import time
 import re, sys
-import imaplib, email
 import socket
 import subprocess
-import pdb
 import random
 
+import pdb
+
 # To set up app password, go to https://myaccount.google.com/apppasswords
+class EmailHandler:
 
-# user = "igrkeene@gmail.com"
-# password = "gkwensfxosnwggrc"
-# imap_url = "imap.gmail.com"
+    def __init__(self, user, password, source):
+        self._user = user
+        self._password = password
+        self._source = source
+        self._imap_url = "imap.gmail.com"
+        self._smtp_url = "smtp.gmail.com"
 
-# con = imaplib.IMAP4_SSL(imap_url)
-# con.login(user, password)
-# con.select("Inbox")
-# result, data = con.search(None, "FROM", "amber@kirklandsommers.com")
-# typ, data = con.fetch(b'24180', '(RFC822)')
-# msg = email.message_from_bytes(data[0][1])
-# msg.get_payload()
-# pdb.set_trace()
-
-# print("LOGGED IN")
-
-# Function to send email
-def send_email(to_email, subject, body):
-    from_email = "your_email@example.com"  # Replace with your email
-    password = "your_password"  # Replace with your password
-
-    msg = MIMEMultipart()
-    msg['From'] = from_email
-    msg['To'] = to_email
-    msg['Subject'] = subject
-
-    msg.attach(MIMEText(body, 'plain'))
-
-    try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)  # Change if using another email service
-        server.starttls()
-        server.login(from_email, password)
-        server.send_message(msg)
-        server.quit()
-        print(f"Email sent to {to_email}")
-    except Exception as e:
-        log_error(e)
-
-# Function to log errors
-def log_error(error):
-    with open("error_log.txt", "a") as f:
-        f.write(f"{datetime.datetime.now()}: {str(error)}\n")
+        self._imap = imaplib.IMAP4_SSL(self._imap_url)
+        self._imap.login(user, password)
+        self._get_responses()
 
 
-# Function to fetch property pricing
-def get_property_pricing(conn, property_name):
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM properties WHERE name=?", (property_name,))
-    return cursor.fetchone()
+    def _get_responses(self):
+
+        signature_file = Path("signature.txt")
+        signature = signature_file.read_text()
+        responses_dir = Path("responses")
+        self._response_dict = {f.name.split(".")[0]: f.read_text() + signature for f in responses_dir.iterdir()}
+
+
+    def send_email(self, to_email, lead_info, notify=False):
+
+        msg = MIMEMultipart()
+        msg['From'] = self._user
+
+        if notify:
+            body = f"Handled lead for {to_email}"
+            msg['To'] = self._user
+            msg['Subject'] = "Lead Handled"
+            msg.attach(MIMEText(body, 'plain'))
+        else:
+            body = self._response_dict[lead_info["Location Name"]]
+            msg['To'] = to_email
+            msg['Subject'] = "Location Name"
+            msg.attach(MIMEText(body, 'html'))
+
+        try:
+            smtp = smtplib.SMTP(self._smtp_url, 587)  # Change if using another email service
+            smtp.starttls()
+            smtp.login(self._user, self._password)
+            smtp.send_message(msg)
+            smtp.quit()
+            if notify:
+                print(f"Handled notification sent to {self._user}")
+            else:
+                print(f"Email sent to {to_email}")
+        except Exception as e:
+            self._log_error(e)
+
+
+    def delete_email(self, msg_id):
+
+        self._imap.store(msg_id, "+FLAGS", "\\Deleted")
+        self._imap.expunge()
+
+
+    def retrieve_leads(self):
+
+        leads_info = {}
+        self._imap.select("Inbox")
+        result, messages = self._imap.search(None, "FROM", self._source)
+        message_list = messages[0].split(b' ')
+        if len(message_list) == 1 and message_list[0] == b'':
+            return leads_info
+        else:
+            for message in message_list:
+                _, msg = self._imap.fetch(message, '(RFC822)')
+                msg_data = email.message_from_bytes(msg[0][1])
+                payload = msg_data.get_payload()[1].get_payload()
+                print("Parse Payload for relevant info.")
+                leads_info[msg_data["Subject"]] = payload
+        
+            return leads_info
+
+
+    # Function to log errors
+    def _log_error(self, error):
+        with open("error_log.txt", "a") as f:
+            f.write(f"{datetime.datetime.now()}: {str(error)}\n")
+
 
 # Function to get the current greeting
 def get_greeting():
+
     current_hour = datetime.datetime.now().hour
     if current_hour < 12:
         return "Good morning"
@@ -73,156 +106,118 @@ def get_greeting():
     else:
         return "Good evening"
 
-# Function to process incoming lead
-def process_lead(lead_email, property_name, apartment_type):
-    conn = setup_database()
-    
-    assigned_employee_email = assign_lead(conn)
 
-    # Fetch pricing information based on the property and apartment type
-    property_info = get_property_pricing(conn, property_name)
-    if property_info:
-        if apartment_type.lower() == "studio":
-            price = property_info[2]  # studio_price
-        elif apartment_type.lower() == "one bedroom":
-            price = property_info[3]  # one_bedroom_price
-        elif apartment_type.lower() == "two bedroom":
-            price = property_info[4]  # two_bedroom_price
-        else:
-            price = "not available"
-    else:
-        price = "not available"
+class ClientHandler:
 
-    # Construct the email body
-    greeting = get_greeting()
-    body = (f"{greeting},\n\n"
-            f"Thank you for your inquiry about {property_name}!\n\n"
-            f"We have a luxurious selection of apartments:\n"
-            f"- Studios starting at ${price}.\n"
-            f"- One bedrooms starting at ${price}.\n"
-            f"- Two bedrooms starting at ${price}.\n\n"
-            f"Additionally, we offer a move-in special with a $499 non-refundable deposit and your first month half off!\n\n"
-            f"Please let us know what day you would like to schedule a tour, and feel free to ask if you have any further questions.\n\n"
-            f"Note: There are other small community fees, but our prices remain competitive!\n"
-            f"We look forward to helping you find your new home!\n\n"
-            f"Best regards,\n"
-            f"Your Leasing Team")
+    def __init__(self, email_handler):
 
-    send_email(assigned_employee_email, f"New Inquiry for {apartment_type} at {property_name}", body)
+        self._check_wifi_connection()
+        self._client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._email_handler = email_handler
+        self._setup_broadcast_socket()
+        self._get_network()
 
-    # Track the lead conversion (placeholder for analytics)
-    track_conversion(lead_email)
-
-    conn.close()
-
-# Function to track conversion rates
-def track_conversion(lead_email):
-    conn = sqlite3.connect('leads.db')
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO conversion_tracking (lead_email, converted) VALUES (?, ?)", (lead_email, False))
-    conn.commit()
-    conn.close()
+        for host in range(254):
+           if self._connect_to_server(host):
+                break
 
 
-def check_wifi_connection():
-    wifi_connection = subprocess.run(
-        ["powershell", "-Command", 
-        'Get-NetAdapter -Physical | Where-Object {$_.Status -eq "Up" -and $_.Name -like "*Wi-Fi*"}'],
-        capture_output=True,
-        text=True,
-        shell=True)
+    def _check_wifi_connection(self):
 
-    if wifi_connection.stdout == "":
-        print("Not connected to WiFi!")
-        sys.exit(1)
+        wifi_connection = subprocess.run(
+            ["powershell", "-Command", 
+            'Get-NetAdapter -Physical | Where-Object {$_.Status -eq "Up" -and $_.Name -like "*Wi-Fi*"}'],
+            capture_output=True,
+            text=True,
+            shell=True)
 
-
-def get_network():
-
-    gateway_search = subprocess.run(
-        ["powershell", "-Command", 
-        "Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object NextHop"],
-        capture_output=True,
-        text=True,
-        shell=True)
-    gateway_ip = re.search("\d+\.\d+\.\d+\.\d+", gateway_search.stdout).group()
-    network = ".".join(gateway_ip.split(".")[:-1])
-
-    return network
-    
-
-def connect_to_server(network, host, client_socket):
-    potential_server = subprocess.run(["powershell", "nslookup", f"{network}.{host}"], capture_output=True, text=True)
-    try:
-        server_name = re.search("(?<=Name:)(.*)", potential_server.stdout).group().strip()
-        try:
-            print(f"Attempting to connect to {server_name}...")
-            client_socket.connect((f"{network}.{host}", 5000))
-            client_socket.send(f"Hello from client. Client: {socket.gethostname()}, Broadcast: {network}.255".encode())
-            data = client_socket.recv(1024)
-            print(f"{data.decode()}")
-            return True
-        except ConnectionRefusedError:
-            pass
-        except TimeoutError:
-            pass
-    except AttributeError:
-        pass
-    
-    return False
+        if wifi_connection.stdout == "":
+            print("Not connected to WiFi!")
+            sys.exit(1)
 
 
-def manage_client(client_socket, broadcast_socket):
+    def _setup_broadcast_socket(self):
 
-    email_list = ["email1", "email2", "email3", "email4", "email5", "email6"]
+        self._broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._broadcast_socket.bind(('', 12345))
 
-    i = 7 
-    previous_broadcast = None
-    inbox_empty = False
-    while True:
-        r = random.uniform(0, 1)
-        if r <= 0.1:
-            email_list.append(f"email{i}")
-            i += 1
 
-        data, addr = broadcast_socket.recvfrom(8192)
-        info = data.decode()
-        if info != previous_broadcast or inbox_empty:
-            if "Token" in info and socket.gethostname() in info:
-                if len(email_list) > 0:
-                    print(f"SENDING EMAIL {email_list[0]}...")
-                    client_socket.send(f"Token Release for {email_list[0]}".encode())
-                    inbox_empty = False
-                else:
-                    print("No leads found in inbox.")
-                    client_socket.send("No Leads.".encode())
-                    inbox_empty = True
-            elif "Handled Lead" in info:
-                handled_lead = data.decode().split("Handled Lead: ")[1]
-                if handled_lead in email_list:
-                    print(f"Deleting handled lead {handled_lead}...")
-                    email_list.remove(handled_lead)
-                else:
-                    print(f"{handled_lead} not in client's inbox")
+    def _get_network(self):
 
-            previous_broadcast = info
+        gateway_search = subprocess.run(
+            ["powershell", "-Command", 
+            "Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object NextHop"],
+            capture_output=True,
+            text=True,
+            shell=True)
+        gateway_ip = re.search("\d+\.\d+\.\d+\.\d+", gateway_search.stdout).group()
+        self._network = ".".join(gateway_ip.split(".")[:-1])
         
-        time.sleep(2)
+
+    def _connect_to_server(self, host):
+
+        potential_server = subprocess.run(["powershell", "nslookup", f"{self._network}.{host}"], capture_output=True, text=True)
+        try:
+            server_name = re.search("(?<=Name:)(.*)", potential_server.stdout).group().strip()
+            try:
+                print(f"Attempting to connect to {server_name}...")
+                self._client_socket.connect((f"{self._network}.{host}", 5000))
+                self._client_socket.send(f"Hello from client. Client: {socket.gethostname()}, Broadcast: {self._network}.255".encode())
+                data = self._client_socket.recv(1024)
+                print(f"{data.decode()}")
+                return True
+            except ConnectionRefusedError as e:
+                pass
+            except TimeoutError as e:
+                pass
+        except AttributeError:
+            pass
+        
+        return False
+
+
+    def manage_client(self):
+
+        previous_broadcast = None
+        inbox_empty = False
+        while True:
+            leads = self._email_handler.retrieve_leads()
+            data, addr = self._broadcast_socket.recvfrom(8192)
+            info = data.decode()
+            if info != previous_broadcast or inbox_empty:
+                if "Token" in info and socket.gethostname() in info:
+                    try:
+                        tgt_email, tgt_info = leads.popitem()
+                        print(f"SENDING EMAIL {tgt_email}...")
+                        self._email_handler.send_email(tgt_email, tgt_info)
+                        self._client_socket.send(f"Token Release for {tgt_email}".encode())
+                        inbox_empty = False
+                    except KeyError:
+                        print("No leads found in inbox.")
+                        self._client_socket.send("No Leads.".encode())
+                        inbox_empty = True
+                elif "Handled Lead" in info:
+                    handled_lead = data.decode().split("Handled Lead: ")[1]
+                    try:
+                        tgt_info = leads.pop(handled_lead)
+                        print(f"Deleting handled lead from {handled_lead}...")
+                        self._email_handler.delete_email(handled_lead, tgt_info["Email Id"])
+                        self._email_handler.send_email(handled_lead, tgt_info, notify=True)
+                    except KeyError:
+                        print(f"{handled_lead} not in client's inbox")
+
+                previous_broadcast = info
+            
+            time.sleep(2)
 
 
 if __name__ == "__main__":
 
-    check_wifi_connection()
+    user = "igrkeene@gmail.com"
+    password = "gkwensfxosnwggrc"
+    source = "b1gbo1j@yahoo.com"
 
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    network = get_network()
-
-    broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    broadcast_socket.bind(('', 12345))
-
-    for host in range(254):
-       if connect_to_server(network, host, client_socket):
-            break
-    
-    manage_client(client_socket, broadcast_socket)
+    email_handler = EmailHandler(user, password, source)
+    client_handler = ClientHandler(email_handler)
+    client_handler.manage_client()

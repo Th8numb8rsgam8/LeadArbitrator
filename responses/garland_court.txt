@@ -1,0 +1,24 @@
+<div>Good Morning,</div>
+<div><br></div>
+<div>Thank you for your interest in Garland Court Apartments!</div>
+<div><br></div>
+<div>I have two bedroom units available coming the end of November</div>
+<div>-Rent: $975</div><div>-Water: $35</div>
+<div>-Gas: $35</div>
+<div><br></div>
+<div>We have lease specials for tems of 13, 15, and 18 months!</div>
+<div>Applications are $50 (follow the link)</div>
+<div>
+<span id="gmail-docs-internal-guid-5ab7537b-7fff-c226-ce0f-e24685fcfbb2"><p dir="ltr" style="line-height:1.38;margin-top:0pt;margin-bottom:0pt">
+    <a href="https://winco.twa.rentmanager.com/ApplyNow?propertyID=393&amp;locations=1" style="text-decoration-line:none">
+    <span style="font-size:11pt;font-family:Arial,sans-serif;background-color:transparent;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-alternates:normal;text-decoration-line:underline;vertical-align:baseline">https://winco.twa.rentmanager.com/ApplyNow?propertyID=393&amp;locations=1</span>
+    </a>
+    </p>
+    <p dir="ltr" style="line-height:1.38;margin-top:0pt;margin-bottom:0pt"><br></p>
+    <p style="line-height:1.38;margin-top:0pt;margin-bottom:0pt">If you have any questions or would like to schedule an appointment please let me know. Thank you!</p>
+    <p style="line-height:1.38;margin-top:0pt;margin-bottom:0pt"><br></p>
+    <p style="line-height:1.38;margin-top:0pt;margin-bottom:0pt">Best Regards,</p>
+    <p style="line-height:1.38;margin-top:0pt;margin-bottom:0pt"><br></p>
+    <p style="line-height:1.38;margin-top:0pt;margin-bottom:0pt"><br></p>
+</span>
+</div>

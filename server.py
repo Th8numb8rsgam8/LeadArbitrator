@@ -93,7 +93,7 @@ def handle_client(client_socket, q):
                 cursor.execute(f"UPDATE employees SET token = {str(token)} WHERE name = '{info[idx][0]}'")
             conn.commit()
 
-            time.sleep(2)
+            time.sleep(5)
 
             cursor.execute("SELECT name FROM employees WHERE token = 1")
             name = cursor.fetchone()[0]
@@ -114,17 +114,17 @@ def setup_database():
     if not Path("employees.db").exists():
         conn = sqlite3.connect('employees.db')
         cursor = conn.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT, email TEXT, token INTEGER)''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT, token INTEGER)''')
         data = [
-            ('Rebecca', 'rebecca.crites@thewindsorcompanies.com', '0'),
+            ('Rebecca', '0'),
             # ('Gabriele', 'gabrielle.batsche@thewindsorcompanies.com', '0'),
             # ('Tim', 'tim.peffley@thewindsorcompanies.com', '0'),
-            ('DESKTOP-18R4AM7', 'alien@ware.com', '0'),
-            ('DESKTOP-F8DKQV0', 'igrkeene@gmail.com', '1')
+            ('DESKTOP-18R4AM7', '0'),
+            ('DESKTOP-F8DKQV0', '1')
         ]
 
         try:
-            cursor.executemany('''INSERT INTO employees (name, email, token) VALUES (?, ?, ?)''', data)
+            cursor.executemany('''INSERT INTO employees (name, token) VALUES (?, ?)''', data)
         except sqlite3.IntegrityError:
             pass
 
