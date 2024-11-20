@@ -1,30 +1,57 @@
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import imaplib, email, smtplib
 from pathlib import Path
 import datetime
 import time
-import re, sys
+import re, sys, os
+import pickle
 import socket
 import subprocess
 import random
 
 import pdb
 
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from base64 import urlsafe_b64decode, urlsafe_b64encode
+
 # To set up app password, go to https://myaccount.google.com/apppasswords
+# Google API dashboard https://console.cloud.google.com/apis/dashboard
+# Google API Python setup: https://developers.google.com/gmail/api/quickstart/python
+
+
 class EmailHandler:
 
-    def __init__(self, user, password, source):
+    def __init__(self, user, source):
         self._user = user
-        self._password = password
         self._source = source
-        self._imap_url = "imap.gmail.com"
-        self._smtp_url = "smtp.gmail.com"
-
-        self._imap = imaplib.IMAP4_SSL(self._imap_url)
-        self._imap.login(user, password)
-        self._get_responses()
+        self._scopes = ['https://mail.google.com/']
         self._lead_info_pattern = "Renter's Information\\r\\nName:\s*(.*)\\r\\nPhone:\s*(.*)\\r\\nEmail:\s*(.*)\\r\\nLead Submitted"
+
+        self._gmail_api()
+        self._get_responses()
+
+
+    def _gmail_api(self):
+
+        creds = None
+        if os.path.exists("token.pickle"):
+            with open("token.pickle", "rb") as token:
+                creds = pickle.load(token)
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+
+            with open("token.pickle", "wb") as token:
+                pickle.dump(creds, token)
+    
+        self._service = build("gmail", 'v1', credentials=creds)
+        print("Gmail API authenticated.")
 
 
     def _get_responses(self):
@@ -55,18 +82,22 @@ class EmailHandler:
             msg['To'] = self._user
             msg['Subject'] = "Lead Handled"
             msg.attach(MIMEText(body, 'plain'))
+
         else:
-            body = self._response_dict[lead_info["location"]]
+            if not self._response_dict.get(lead_info["location"]):
+                print(f'{lead_info["location"]} is not one of the recorded locations.')
+                return
+
+            body = self._response_dict.get(lead_info["location"])
             msg['To'] = to_email
             msg['Subject'] = lead_info["location"]
             msg.attach(MIMEText(body, 'html'))
 
         try:
-            smtp = smtplib.SMTP(self._smtp_url, 587)  # Change if using another email service
-            smtp.starttls()
-            smtp.login(self._user, self._password)
-            smtp.send_message(msg)
-            smtp.quit()
+            self._service.users().messages().send(
+                userId="me",
+                body={"raw": urlsafe_b64encode(msg.as_bytes()).decode()}
+            ).execute()
             if notify:
                 print(f"Handled notification sent to {self._user}")
             else:
@@ -77,32 +108,35 @@ class EmailHandler:
 
     def delete_email(self, msg_id):
 
-        self._imap.store(msg_id, "+FLAGS", "\\Deleted")
-        self._imap.expunge()
+        self._service.users().messages().delete(userId="me", id=msg_id).execute()
 
 
     def retrieve_leads(self):
 
         leads_info = {}
-        self._imap.select("Inbox")
-        result, messages = self._imap.search(None, "FROM", self._source)
-        message_list = messages[0].split(b' ')
-        if len(message_list) == 1 and message_list[0] == b'':
+        result = self._service.users().messages().list(userId="me", q=f"in:inbox from:{self._source}").execute()
+
+        if not result.get("messages"):
             return leads_info
         else:
-            for message in message_list:
-                _, msg = self._imap.fetch(message, '(RFC822)')
-                msg_data = email.message_from_bytes(msg[0][1])
-                payload = msg_data.get_payload()[0].get_payload()
-                while type(payload) != str:
-                    payload = payload[0].get_payload()
+            for message in result["messages"]:
+                msg = self._service.users().messages().get(userId="me", id=message["id"], format="full").execute()
+                payload = msg["payload"]
+                headers = payload.get("headers")
+                part = payload.get("parts")[0]
+                subject = [hdr["value"] for hdr in headers if hdr["name"].lower() == "subject"][0]
+                while part.get("parts"):
+                    part = part.get("parts")[0]
+
                 try:
-                    lead_name, lead_phone, lead_email = lead_info = re.findall(self._lead_info_pattern, payload)[0]
-                    location = re.search("Apartments.com Network lead for (.*)", msg_data["Subject"]).groups()[0]
+                    data = part.get("body").get("data")
+                    text = urlsafe_b64decode(data).decode()
+                    lead_name, lead_phone, lead_email = lead_info = re.findall(self._lead_info_pattern, text)[0]
+                    location = re.search("Apartments.com Network lead for (.*)", subject).groups()[0]
                     leads_info[lead_email] = {
                         "name": lead_name, 
                         "phone": lead_phone,
-                        "msg_id": message,
+                        "msg_id": message["id"],
                         "location": location}
                 except IndexError as e:
                     self._log_error(e)
@@ -236,9 +270,8 @@ class ClientHandler:
 if __name__ == "__main__":
 
     user = "igrkeene@gmail.com"
-    password = "gkwensfxosnwggrc"
     source = "ivan.keene@radiancetech.com"
 
-    email_handler = EmailHandler(user, password, source)
+    email_handler = EmailHandler(user, source)
     client_handler = ClientHandler(email_handler)
     client_handler.manage_client()
