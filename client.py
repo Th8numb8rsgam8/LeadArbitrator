@@ -16,10 +16,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 
-# To set up app password, go to https://myaccount.google.com/apppasswords
 # Google API dashboard https://console.cloud.google.com/apis/dashboard
 # Google API Python setup: https://developers.google.com/gmail/api/quickstart/python
-
 
 class EmailHandler:
 
@@ -44,7 +42,7 @@ class EmailHandler:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', self._scopes)
                 creds = flow.run_local_server(port=0)
 
             with open("token.pickle", "wb") as token:
@@ -69,14 +67,14 @@ class EmailHandler:
         return " ".join(capitalized)
 
 
-    def send_email(self, to_email, lead_info, notify=False):
+    def send_email(self, to_email, lead_info, handler=None):
 
         msg = MIMEMultipart()
         msg['From'] = self._user
 
-        if notify:
+        if handler:
             body = f'''
-                {self._user} Initiated lead for {lead_info["name"]}, who is interested in {lead_info["location"]}.
+                {handler} Initiated lead for {lead_info["name"]}, who is interested in {lead_info["location"]}.
                 Contact Info: email: {to_email}, phone: {lead_info["phone"]}.
                 '''
             msg['To'] = self._user
@@ -253,12 +251,14 @@ class ClientHandler:
                         self._client_socket.send("No Leads.".encode())
                         inbox_empty = True
                 elif "Handled Lead" in info:
-                    handled_lead = data.decode().split("Handled Lead: ")[1]
+                    lead_handler = data.decode().split(" by ")
+                    handler = lead_handler[-1]
+                    handled_lead = lead_handler[0].split("Handled Lead: ")[1]
                     try:
                         tgt_info = leads.pop(handled_lead)
                         print(f"Deleting handled lead from {handled_lead}...")
                         self._email_handler.delete_email(tgt_info["msg_id"])
-                        self._email_handler.send_email(handled_lead, tgt_info, notify=True)
+                        self._email_handler.send_email(handled_lead, tgt_info, handler=handler)
                     except KeyError:
                         print(f"{handled_lead} not in client's inbox")
 

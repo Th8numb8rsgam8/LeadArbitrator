@@ -79,7 +79,7 @@ def handle_client(client_socket, q):
 
         elif "Token Release" in data.decode():
             handled_lead = data.decode().split("Token Release for ")[1]
-            msg = f"Handled Lead: {handled_lead}"
+            msg = f"Handled Lead: {handled_lead} by {threading.current_thread().name}"
             q.put(msg)
 
             clients = ["\'"+thread.name+"\'" for thread in threading.enumerate() if thread.name not in ["MainThread", "Broadcast"]]
