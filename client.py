@@ -11,6 +11,7 @@ import random
 
 import pdb
 
+from bs4 import BeautifulSoup
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -121,15 +122,16 @@ class EmailHandler:
                 msg = self._service.users().messages().get(userId="me", id=message["id"], format="full").execute()
                 payload = msg["payload"]
                 headers = payload.get("headers")
-                part = payload.get("parts")[0]
                 subject = [hdr["value"] for hdr in headers if hdr["name"].lower() == "subject"][0]
-                while part.get("parts"):
-                    part = part.get("parts")[0]
 
                 try:
-                    data = part.get("body").get("data")
+                    data = payload.get("body").get("data")
                     text = urlsafe_b64decode(data).decode()
-                    lead_name, lead_phone, lead_email = lead_info = re.findall(self._lead_info_pattern, text)[0]
+                    soup = BeautifulSoup(text, 'html.parser')
+                    lead_name = re.search("Name:\s*(.*)\r", text).groups()[0]
+                    lead_phone = soup.select('a[href*=tel]')[0].decode_contents()
+                    lead_email = soup.select('a[href*=mailto]')[0].decode_contents()
+                    # lead_name, lead_phone, lead_email = lead_info = re.findall(self._lead_info_pattern, text)[0]
                     location = re.search("Apartments.com Network lead for (.*)", subject).groups()[0]
                     leads_info[lead_email] = {
                         "name": lead_name, 
@@ -179,7 +181,7 @@ class ClientHandler:
 
         wifi_connection = subprocess.run(
             ["powershell", "-Command", 
-            'Get-NetAdapter -Physical | Where-Object {$_.Status -eq "Up" -and $_.Name -like "*Wi-Fi*"}'],
+            'Get-NetAdapter -Physical | Where-Object {$_.Status -eq "Up" -and ($_.Name -like "*Wi-Fi*" -or "*Wireless*")}'],
             capture_output=True,
             text=True,
             shell=True)
@@ -269,8 +271,8 @@ class ClientHandler:
 
 if __name__ == "__main__":
 
-    user = "igrkeene@gmail.com"
-    source = "ivan.keene@radiancetech.com"
+    user = "rebecca.crites@thewindsorcompanies.com"
+    source = "daytonleasing@thewindsorcompanies.com"
 
     email_handler = EmailHandler(user, source)
     client_handler = ClientHandler(email_handler)

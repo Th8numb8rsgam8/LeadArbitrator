@@ -116,11 +116,9 @@ def setup_database():
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT, token INTEGER)''')
         data = [
-            ('Rebecca', '0'),
-            # ('Gabriele', '0'),
-            # ('Tim', '0'),
-            ('DESKTOP-18R4AM7', '0'),
-            ('DESKTOP-F8DKQV0', '1')
+            ('Rebecca.attlocal', '1'),
+            ('Ray.attlocal', '0'),
+            ('LAPTOP-SH4T9NQT.attlocal', '0')
         ]
 
         try:
@@ -139,7 +137,9 @@ def manage_server(num_clients):
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     result = subprocess.run(["nslookup", socket.gethostname()], capture_output=True, text=True)
-    server_ip = re.search("(?<=Address:)\s*(\d+\.\d+\.\d+\.\d+)", result.stdout).group().strip()
+    addresses = result.stdout.split("Addresses:")[-1].split(" ")
+    server_ip = addresses[-1].strip()
+    # server_ip = re.search("(?<=Address:)\s*(\d+\.\d+\.\d+\.\d+)", result.stdout).group().strip()
     server_socket.bind((server_ip, 5000))
     server_socket.listen(1)
 
