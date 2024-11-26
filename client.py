@@ -97,11 +97,12 @@ class EmailHandler:
                 userId="me",
                 body={"raw": urlsafe_b64encode(msg.as_bytes()).decode()}
             ).execute()
-            if notify:
+            if handler:
                 print(f"Handled notification sent to {self._user}")
             else:
                 print(f"Email sent to {to_email}")
         except Exception as e:
+            print(str(e))
             self._log_error(e)
 
 
@@ -119,16 +120,16 @@ class EmailHandler:
             return leads_info
         else:
             for message in result["messages"]:
-                msg = self._service.users().messages().get(userId="me", id=message["id"], format="full").execute()
-                payload = msg["payload"]
-                headers = payload.get("headers")
-                subject = [hdr["value"] for hdr in headers if hdr["name"].lower() == "subject"][0]
-
                 try:
+                    msg = self._service.users().messages().get(userId="me", id=message["id"], format="full").execute()
+                    payload = msg["payload"]
+                    headers = payload.get("headers")
+                    subject = [hdr["value"] for hdr in headers if hdr["name"].lower() == "subject"][0]
+
                     data = payload.get("body").get("data")
                     text = urlsafe_b64decode(data).decode()
                     soup = BeautifulSoup(text, 'html.parser')
-                    lead_name = re.search("Name:\s*(.*)\r", text).groups()[0]
+                    lead_name = re.search("Name:\s*(.*)\r", soup.get_text()).groups()[0]
                     lead_phone = soup.select('a[href*=tel]')[0].decode_contents()
                     lead_email = soup.select('a[href*=mailto]')[0].decode_contents()
                     # lead_name, lead_phone, lead_email = lead_info = re.findall(self._lead_info_pattern, text)[0]
@@ -140,6 +141,9 @@ class EmailHandler:
                         "location": location}
                 except IndexError as e:
                     self._log_error(e)
+                except:
+                    pass
+                    # print(f'{subject} is not correctly formatted for parsing')
         
             return leads_info
 
@@ -238,6 +242,9 @@ class ClientHandler:
         inbox_empty = False
         while True:
             leads = self._email_handler.retrieve_leads()
+            now = datetime.datetime.now()
+            current_time = now.strftime('%H:%M:%S')
+            print(f'{current_time}: {len(leads)} leads found in inbox')
             data, addr = self._broadcast_socket.recvfrom(8192)
             info = data.decode()
             if info != previous_broadcast or inbox_empty:

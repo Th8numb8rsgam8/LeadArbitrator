@@ -116,8 +116,8 @@ def setup_database():
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT, token INTEGER)''')
         data = [
-            ('Rebecca.attlocal', '1'),
-            ('Ray.attlocal', '0'),
+            ('Rebecca.attlocal', '0'),
+            ('Ray.attlocal', '1'),
             ('LAPTOP-SH4T9NQT.attlocal', '0')
         ]
 
