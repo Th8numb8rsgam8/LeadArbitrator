@@ -10,6 +10,21 @@ from pathlib import Path
 import pdb
 
 
+class CLIOutput:
+
+    def INFO(text):
+        print(f'\033[1;37m{text}\033[0;0m')
+
+    def OK(text):
+        print(f'\033[1;32m{text}\033[0;0m')
+
+    def WARNING(text):
+        print(f'\033[1;33m{text}\033[0;0m')
+
+    def FATAL(text):
+        print(f'\033[1;31m{text}\033[0;0m')
+
+
 def num_clients_to_serve():
 
     cli_parser = argparse.ArgumentParser(
@@ -116,9 +131,11 @@ def setup_database():
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT, token INTEGER)''')
         data = [
-            ('Rebecca.attlocal', '0'),
-            ('Ray.attlocal', '1'),
-            ('LAPTOP-SH4T9NQT.attlocal', '0')
+            ('Rebecca', '0'),
+            ('DESKTOP-F8DKQV0', '1')
+            # ('Rebecca.attlocal', '0'),
+            # ('Ray.attlocal', '1'),
+            # ('LAPTOP-SH4T9NQT.attlocal', '0')
         ]
 
         try:
@@ -143,33 +160,38 @@ def manage_server(num_clients):
     server_socket.bind((server_ip, 5000))
     server_socket.listen(1)
 
-    print("Server listening on port 5000.")
+    print(f"Server {server_ip} listening on port 5000.")
 
     q = queue.Queue(maxsize=1)
-    client_threads = []
-    while True:
-        client_socket, addr = server_socket.accept()
-        client_info = subprocess.run(["powershell", "nslookup", f"{addr}"], capture_output=True, text=True)
-        client_name = re.search("(?<=Name:)\s*(.*)\.", client_info.stdout).groups()[0]
-        print(f"Connection from {client_name}:{addr}")
-        thread = threading.Thread(
-            name=client_name,
-            target=handle_client, 
-            args=(client_socket, q))
-        client_threads.append(thread)
-        if len(client_threads) == num_clients:
-            break
 
     broadcast_addr = ".".join(server_ip.split(".")[:3]) + ".255"
     broadcast_thread = threading.Thread(
         name="Broadcast",
         target=repeat_broadcast,
-        args=(broadcast_socket, broadcast_addr, q))
+        args=(broadcast_socket, broadcast_addr, q),
+        daemon=False)
     broadcast_thread.start()
 
-    for t in client_threads:
-        t.start()
-        time.sleep(5)
+    while True:
+        clients = [thread for thread in threading.enumerate() if thread.name not in ["MainThread", "Broadcast"]]
+        if len(clients) < num_clients:
+            client_socket, addr = server_socket.accept()
+            client_info = subprocess.run(["powershell", "nslookup", f"{addr}"], capture_output=True, text=True)
+            client_name = re.search("(?<=Name:)\s*(.*)\.", client_info.stdout).groups()[0]
+            print(f"Connection from {client_name}:{addr}")
+            thread = threading.Thread(
+                name=client_name,
+                target=handle_client, 
+                args=(client_socket, q),
+                daemon=False)
+            thread.start()
+
+
+def thread_exceptions(args):
+
+    if args.exc_type.__dict__["__doc__"] == "Connection reset.":
+        exc_comment = args.exc_value.args[1]
+        CLIOutput.FATAL(f"THREAD EXCEPTION: {args.thread.name}; DETAILS: {exc_comment}")
 
 
 if __name__ == "__main__":
@@ -177,4 +199,6 @@ if __name__ == "__main__":
     num_clients = num_clients_to_serve()
     check_wifi_connection()
     setup_database()
+
+    threading.excepthook = thread_exceptions
     manage_server(num_clients)

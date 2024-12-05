@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from google.auth import exceptions as google_auth_exceptions
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 
 # Google API dashboard https://console.cloud.google.com/apis/dashboard
@@ -39,15 +40,16 @@ class EmailHandler:
             with open("token.pickle", "rb") as token:
                 creds = pickle.load(token)
 
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', self._scopes)
-                creds = flow.run_local_server(port=0)
+            if not creds or not creds.valid:
+                try:
+                    creds.refresh(Request())
 
-            with open("token.pickle", "wb") as token:
-                pickle.dump(creds, token)
+                except google_auth_exceptions.GoogleAuthError:
+                    flow = InstalledAppFlow.from_client_secrets_file('credentials.json', self._scopes)
+                    creds = flow.run_local_server(port=0)
+
+                with open("token.pickle", "wb") as token:
+                    pickle.dump(creds, token)
     
         self._service = build("gmail", 'v1', credentials=creds)
         print("Gmail API authenticated.")
@@ -125,6 +127,7 @@ class EmailHandler:
                     payload = msg["payload"]
                     headers = payload.get("headers")
                     subject = [hdr["value"] for hdr in headers if hdr["name"].lower() == "subject"][0]
+                    pdb.set_trace()
 
                     data = payload.get("body").get("data")
                     text = urlsafe_b64decode(data).decode()
@@ -278,8 +281,9 @@ class ClientHandler:
 
 if __name__ == "__main__":
 
-    user = "rebecca.crites@thewindsorcompanies.com"
-    source = "daytonleasing@thewindsorcompanies.com"
+    user = "igrkeene@gmail.com"
+    source = "ivan.keene@radiancetech.com"
+    # source = "daytonleasing@thewindsorcompanies.com"
 
     email_handler = EmailHandler(user, source)
     client_handler = ClientHandler(email_handler)
