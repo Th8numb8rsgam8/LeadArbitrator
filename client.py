@@ -29,6 +29,12 @@ class EmailHandler:
         self._scopes = ['https://mail.google.com/']
         self._lead_info_pattern = "Renter's Information\\r\\nName:\s*(.*)\\r\\nPhone:\s*(.*)\\r\\nEmail:\s*(.*)\\r\\nLead Submitted"
 
+        if getattr(sys, 'frozen', False):
+            self._tmpdir = Path(sys._MEIPASS)
+            os.chdir("C:\LeadArbitrator\dist")
+        else:
+            self._tmpdir = Path(os.getcwd())
+
         self._gmail_api()
         self._get_responses()
 
@@ -36,20 +42,27 @@ class EmailHandler:
     def _gmail_api(self):
 
         creds = None
-        if os.path.exists("token.pickle"):
-            with open("token.pickle", "rb") as token:
+        token_path = Path(os.getcwd()).joinpath("token.pickle")
+        if os.path.exists(token_path):
+            with open(token_path, "rb") as token:
                 creds = pickle.load(token)
 
-            if not creds or not creds.valid:
+            if not creds.valid:
                 try:
                     creds.refresh(Request())
 
                 except google_auth_exceptions.GoogleAuthError:
-                    flow = InstalledAppFlow.from_client_secrets_file('credentials.json', self._scopes)
+                    flow = InstalledAppFlow.from_client_secrets_file(self._tmpdir.joinpath('credentials.json'), self._scopes)
                     creds = flow.run_local_server(port=0)
 
-                with open("token.pickle", "wb") as token:
+                with open(token_path, "wb") as token:
                     pickle.dump(creds, token)
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(self._tmpdir.joinpath('credentials.json'), self._scopes)
+            creds = flow.run_local_server(port=0)
+
+            with open(token_path, "wb") as token:
+                pickle.dump(creds, token)
     
         self._service = build("gmail", 'v1', credentials=creds)
         print("Gmail API authenticated.")
@@ -57,9 +70,9 @@ class EmailHandler:
 
     def _get_responses(self):
 
-        signature_file = Path("signature.txt")
+        signature_file = self._tmpdir.joinpath("signature.txt")
         signature = signature_file.read_text()
-        responses_dir = Path("responses")
+        responses_dir = self._tmpdir.joinpath("responses")
         self._response_dict = {self._format_location_name(f.name): f.read_text() + signature for f in responses_dir.iterdir()}
 
 
@@ -179,9 +192,15 @@ class ClientHandler:
         self._setup_broadcast_socket()
         self._get_network()
 
+        connected_to_server = False
         for host in range(254):
-           if self._connect_to_server(host):
+            if self._connect_to_server(host):
+                connected_to_server = True
                 break
+
+        if not connected_to_server:
+            print("No Server Found")
+            sys.exit(1)
 
 
     def _check_wifi_connection(self):
