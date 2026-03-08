@@ -1,4 +1,4 @@
-import re, sys
+import re, sys, os
 import queue
 import argparse
 import sqlite3
@@ -73,7 +73,7 @@ def repeat_broadcast(broadcast_socket, broadcast_addr, q):
 
 def handle_client(client_socket, q):
 
-    conn = sqlite3.connect('employees.db')
+    conn = sqlite3.connect(os.path.join(os.getcwd(), 'employees.db'))
     cursor = conn.cursor()
     client_name = None
     broadcast_addr = None
@@ -126,13 +126,15 @@ def handle_client(client_socket, q):
 # Setup database to track leads
 def setup_database():
 
-    if not Path("employees.db").exists():
-        conn = sqlite3.connect('employees.db')
+    db_path = Path(os.getcwd(), "employees.db")
+    if not db_path.exists():
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS employees (name TEXT, token INTEGER)''')
         data = [
             ('Rebecca', '0'),
-            ('DESKTOP-F8DKQV0', '1')
+            ('DESKTOP-F8DKQV0', '0'),
+            ('DESKTOP-18R4AM7', '1')
             # ('Rebecca.attlocal', '0'),
             # ('Ray.attlocal', '1'),
             # ('LAPTOP-SH4T9NQT.attlocal', '0')
@@ -195,6 +197,9 @@ def thread_exceptions(args):
 
 
 if __name__ == "__main__":
+
+    if getattr(sys, 'frozen', False):
+        os.chdir("C:\LeadArbitrator\dist")
 
     num_clients = num_clients_to_serve()
     check_wifi_connection()

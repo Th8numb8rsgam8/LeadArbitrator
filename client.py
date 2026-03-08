@@ -222,6 +222,7 @@ class ClientHandler:
         self._broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._broadcast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._broadcast_socket.bind(('', 12345))
+        self._broadcast_socket.settimeout(60)
 
 
     def _get_network(self):
@@ -300,7 +301,7 @@ class ClientHandler:
 
 if __name__ == "__main__":
 
-    user = "igrkeene@gmail.com"
+    user = "rebecca.crites@thewindsorcompmanies.com"
     source = "ivan.keene@radiancetech.com"
     # source = "daytonleasing@thewindsorcompanies.com"
 
